@@ -49,9 +49,16 @@ export async function dispatch(eventId: string): Promise<string[]> {
     targets = owned ? [owned] : agents.slice(0, 1);
   }
   if (!targets.length) return [];
-  const { startRun } = await import("./runtime");
+  const { startRun, notifyRun } = await import("./runtime");
   const runIds: string[] = [];
   for (const a of targets) {
+    // One live run per agent: a new event joins the run already in progress instead of racing it.
+    const live = get<{ id: string }>("SELECT id FROM runs WHERE agent_id = ? AND status = 'running' AND parent_run_id IS NULL ORDER BY started_at DESC LIMIT 1", a.id);
+    if (live) {
+      notifyRun(live.id, `[New event ${ev.type}] ${describeEvent(ev.type, payload)}`);
+      runIds.push(live.id);
+      continue;
+    }
     const r = await startRun({ agentId: a.id, task: describeEvent(ev.type, payload), trigger: { kind: "event", event: ev.type, event_id: ev.id, payload } });
     runIds.push(r);
   }

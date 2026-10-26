@@ -97,7 +97,7 @@ export function evaluate(spec: ToolSpec, args: unknown, ctx: ToolContext, opts: 
       add("Per-transaction limit", amountUsd <= m.spending.perTransactionLimitUsd,
         `USD ${amountUsd.toFixed(2)} against a limit of USD ${m.spending.perTransactionLimitUsd.toFixed(2)}.`);
       if (effect.direction === "outbound") {
-        const spent = spentTodayUsd(ctx.agentId);
+        const spent = spentTodayUsd(ctx.agentId, opts.reservationId);
         add("Daily limit", spent + amountUsd <= m.spending.dailyLimitUsd,
           `USD ${spent.toFixed(2)} already sent today + USD ${amountUsd.toFixed(2)} against USD ${m.spending.dailyLimitUsd.toFixed(2)}.`);
       }
@@ -130,14 +130,16 @@ function finish(checks: PolicyCheck[], approved = false): Decision {
   return { outcome: "allow", reasons: [], checks };
 }
 
-export function spentTodayUsd(agentId: string): number {
+/** Outbound money sent or committed today (executed, in flight, or reserved by a pending approval). */
+export function spentTodayUsd(agentId: string, excludeId?: string): number {
   const start = now();
   start.setUTCHours(0, 0, 0, 0);
   return (
     get<{ s: number | null }>(
-      "SELECT SUM(amount_usd) s FROM money_movements WHERE agent_id = ? AND direction = 'outbound' AND status = 'executed' AND created_at >= ?",
+      "SELECT SUM(amount_usd) s FROM money_movements WHERE agent_id = ? AND direction = 'outbound' AND status IN ('executed','pending') AND created_at >= ? AND id != ?",
       agentId,
       start.toISOString(),
+      excludeId ?? "",
     )?.s ?? 0
   );
 }

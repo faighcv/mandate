@@ -74,7 +74,7 @@ describe("governed agent workforce, end to end (scripted model)", () => {
 
   it("payment incident: a failed payout is investigated, supplier told, nothing paid twice", async () => {
     advanceClock(1);
-    await tick();
+    await tick({ runSchedules: true });
     await idle();
     const r = runsOf("agt_payment_incidents").at(-1)!;
     expect(r.status).toBe("completed");

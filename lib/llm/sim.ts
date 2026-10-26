@@ -69,7 +69,10 @@ export class SimProvider implements LlmProvider {
   }
 }
 
-function planFor(role: string, turns: Turn[], allowed: Set<string>): Plan {
+function planFor(role: string, all: Turn[], allowed: Set<string>): Plan {
+  // An event that joined a run in progress is played as a fresh task from that point on.
+  const at = all.map((t, i) => (t.role === "user" && t.text.startsWith("[New event") ? i : -1)).filter((i) => i >= 0).pop();
+  const turns: Turn[] = at === undefined ? all : [{ role: "user", text: (all[at] as { text: string }).text.replace(/^\[New event [^\]]+\] /, "") }, ...all.slice(at + 1)];
   switch (role) {
     case "collections":
       return collections(turns);
@@ -121,7 +124,8 @@ function collections(turns: Turn[]): Plan {
   const only = /\((inv_[a-z0-9]+)\)/.exec(task)?.[1];
   if (!only && !has(h, "list_invoices")) return { call: ["list_invoices", { status: "overdue" }], say: "Checking overdue invoices." };
   const listed: any[] = did(h, "list_invoices")[0]?.result ?? [];
-  const targets = only ? [{ id: only }] : listed.filter((i) => i.status === "overdue" && !(i.last_contact_at && now().getTime() - Date.parse(i.last_contact_at) < 20 * 3_600_000)).slice(0, 4);
+  // Reminder cadence: at most one chase every 3 days per invoice.
+  const targets = only ? [{ id: only }] : listed.filter((i) => i.status === "overdue" && !(i.last_contact_at && now().getTime() - Date.parse(i.last_contact_at) < 72 * 3_600_000)).slice(0, 4);
   for (const t of targets) {
     const invRead = did(h, "get_invoice", (x) => x.args.invoice_id === t.id)[0];
     if (!invRead) return { call: ["get_invoice", { invoice_id: t.id }] };

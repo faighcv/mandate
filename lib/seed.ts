@@ -65,7 +65,7 @@ export function seed() {
   bill("QF-0042", "sup_quickfix", "CAD", 2_150, 5, "maintenance", "Forklift repair, Bay 3");
   bill("PAY-2026-11A", "sup_payroll", "USD", 96_000, 6, "payroll", "Payroll funding, first half of November");
 
-  for (const [currency, available] of [["USD", 61_500], ["CAD", 12_300], ["EUR", 3_100], ["GBP", 4_800]] as const) insert("balances", { currency, available });
+  for (const [currency, available] of [["USD", 118_500], ["CAD", 12_300], ["EUR", 3_100], ["GBP", 4_800]] as const) insert("balances", { currency, available });
 
   insert("disputes", {
     id: "dsp_meridian_2039", invoice_id: "inv_inv2039", customer_id: "cus_meridian", amount: 3_150, currency: "USD",

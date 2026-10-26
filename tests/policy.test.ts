@@ -77,6 +77,17 @@ describe("policy engine", () => {
     expect(m.spending.approvalAboveUsd).toBe(0);
   });
 
+  it("two concurrent attempts to pay the same bill: exactly one goes through", async () => {
+    delete process.env.MANDATE_NO_DISPATCH;
+    const [a, b] = await Promise.all([
+      redTeamCall("agt_treasury", "pay_bill", { bill_id: "bill_ctinv0931" }, "race 1"),
+      redTeamCall("agt_treasury", "pay_bill", { bill_id: "bill_ctinv0931" }, "race 2"),
+    ]);
+    const statuses = [a, b].map((r) => (r.result as { status?: string }).status);
+    expect(statuses.filter((s) => s === "blocked")).toHaveLength(1);
+    await idle();
+  });
+
   it("red-team probes are blocked and logged", async () => {
     delete process.env.MANDATE_NO_DISPATCH;
     const r = await redTeamCall("agt_collections", "pay_bill", { bill_id: "bill_bw88213" }, "collections tries to pay a supplier");

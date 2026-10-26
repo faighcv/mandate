@@ -11,6 +11,10 @@ import { isoDate, now } from "./util";
  */
 export async function tick(opts: { runSchedules?: boolean } = {}) {
   const overdue = refreshInvoiceStatuses();
+  const runSchedules = opts.runSchedules ?? getSetting<boolean>("autopilot", false);
+  const started: string[] = [];
+  // Background ticks only keep the ledger current; payouts settle and new work starts on autopilot or when the clock moves.
+  if (!runSchedules) return { overdue, started };
   if (railMode() === "simulated") settleTransfers();
   const soon = new Date(now().getTime() + 3 * 86_400_000).toISOString();
   const evented = getSetting<string[]>("bill_due_evented", []);
@@ -20,8 +24,7 @@ export async function tick(opts: { runSchedules?: boolean } = {}) {
     emit("bill.due", { bill_id: b.id, number: b.number, due: b.due_at.slice(0, 10) }, "ledger");
   }
   setSetting("bill_due_evented", evented);
-  const started: string[] = [];
-  if (opts.runSchedules ?? getSetting<boolean>("autopilot", false)) started.push(...(await runDueSchedules()));
+  started.push(...(await runDueSchedules()));
   return { overdue, started };
 }
 

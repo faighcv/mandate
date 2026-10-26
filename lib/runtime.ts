@@ -31,9 +31,10 @@ export const agentMandate = (a: AgentRow) => parse<Mandate>(a.mandate, {} as Man
 export const agentTriggers = (a: AgentRow) => parse<Trigger[]>(a.triggers, []);
 
 const MAX_RESULT_CHARS = 8000;
-const executing = new Set<string>();
-const inbox = new Map<string, string[]>();
-const waiters = new Map<string, (() => void)[]>();
+// Kept on globalThis so route handlers and server actions (separate bundles in Next) share one view of live runs.
+const G = globalThis as typeof globalThis & { __mandateRuntime?: { executing: Set<string>; inbox: Map<string, string[]>; waiters: Map<string, (() => void)[]> } };
+G.__mandateRuntime ??= { executing: new Set(), inbox: new Map(), waiters: new Map() };
+const { executing, inbox, waiters } = G.__mandateRuntime;
 
 function step(runId: string, s: { kind: string; tool?: string; args?: unknown; decision?: string; reasons?: unknown; result?: unknown; text?: string }) {
   insert("steps", { run_id: runId, kind: s.kind, tool: s.tool ?? null, args: s.args ?? null, decision: s.decision ?? null, reasons: s.reasons ?? null, result: s.result ?? null, text: s.text ?? null, created_at: nowIso() });
@@ -212,13 +213,17 @@ export async function invokeTool(runId: string, call: ToolCall, opts: { redTeam?
   }
 
   step(runId, { kind: "tool_call", tool: spec.name, args, decision: "allow", reasons: decision.checks, text: summary });
+  // Reserve before the first await so a concurrent run sees this payment in its duplicate and daily-limit checks.
+  const movement = effect && effect.direction !== "inbound" ? id("mv") : undefined;
+  if (movement) reserve(movement, ctx, spec.name, effect!, "pending");
   try {
     const result = await spec.run(args, ctx);
-    if (effect && effect.direction !== "inbound") reserve(id("mv"), ctx, spec.name, effect, looksFailed(result) ? "failed" : "executed");
+    if (movement) update("money_movements", movement, { status: looksFailed(result) ? "failed" : "executed" });
     step(runId, { kind: "tool_result", tool: spec.name, result });
     return { id: call.id, name: call.name, content: clip(result), isError: looksFailed(result) || undefined };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    if (movement) update("money_movements", movement, { status: "failed" });
     step(runId, { kind: "tool_result", tool: spec.name, result: { error: msg } });
     return { id: call.id, name: call.name, content: JSON.stringify({ error: msg }), isError: true };
   }
@@ -320,7 +325,7 @@ export async function redTeamCall(agentId: string, tool: string, args: unknown, 
   const r = await invokeTool(runId, { id: id("call"), name: tool, args }, { redTeam: true });
   const blocked = r.isError;
   update("runs", runId, { status: "completed", summary: blocked ? `Blocked: ${r.content}` : `Allowed: ${r.content}`, ended_at: nowIso() });
-  return { runId, result: parse(r.content, r.content) };
+  return { runId, result: parse<unknown>(r.content, r.content) };
 }
 
 export function pendingApprovals() {

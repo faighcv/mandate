@@ -71,7 +71,8 @@ export function signRequest(url: string, agentId: string, tag: TapTag, nonce = c
   };
 }
 
-const seenNonces = new Map<string, number>();
+const G = globalThis as typeof globalThis & { __tapNonces?: Map<string, number> };
+const seenNonces = (G.__tapNonces ??= new Map<string, number>());
 
 export interface TapVerification {
   ok: boolean;
